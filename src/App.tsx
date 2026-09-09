@@ -13,7 +13,7 @@ import {
   type JobStatus,
   type Platform,
 } from "./types";
-import { daysUntil, formatCurrency, formatDate } from "./utils";
+import { computeFinance, daysUntil, formatCurrency, formatDate } from "./utils";
 
 type SortKey = "created" | "draftDue" | "publishDate" | "fee";
 type ViewMode = "table" | "calendar";
@@ -47,7 +47,8 @@ function DueBadge({ iso }: { iso: string }) {
 
 function AppInner() {
   const { t, lang, toggleLang } = useLanguage();
-  const { jobs, addJob, updateJob, deleteJob } = useJobs();
+  const { jobs, addJob, updateJob, deleteJob, storageError } = useJobs();
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
@@ -58,10 +59,15 @@ function AppInner() {
   const [view, setView] = useState<ViewMode>("table");
 
   const summary = useMemo(() => {
-    const totalRevenue = jobs.reduce((sum, j) => sum + (j.fee || 0), 0);
-    const unpaidRevenue = jobs
-      .filter((j) => j.status !== "paid")
-      .reduce((sum, j) => sum + (j.fee || 0), 0);
+    let totalRevenue = 0;
+    let totalNet = 0;
+    let totalExpenses = 0;
+    for (const j of jobs) {
+      const f = computeFinance(j);
+      totalRevenue += f.fee;
+      totalNet += f.net;
+      totalExpenses += f.expenses;
+    }
     const upcomingDrafts = jobs.filter((j) => {
       const d = daysUntil(j.draftDue);
       return (
@@ -75,7 +81,8 @@ function AppInner() {
     return {
       totalJobs: jobs.length,
       totalRevenue,
-      unpaidRevenue,
+      totalNet,
+      totalExpenses,
       upcomingDrafts,
     };
   }, [jobs]);
@@ -87,7 +94,8 @@ function AppInner() {
         !q ||
         j.client.toLowerCase().includes(q) ||
         j.title.toLowerCase().includes(q) ||
-        j.notes.toLowerCase().includes(q);
+        j.notes.toLowerCase().includes(q) ||
+        j.genCode.toLowerCase().includes(q);
       const matchesStatus =
         statusFilter === "all" || j.status === statusFilter;
       const matchesPlatform =
@@ -130,6 +138,15 @@ function AppInner() {
   const handleDelete = (job: Job) => {
     if (window.confirm(t("confirmDelete"))) deleteJob(job.id);
   };
+  const handleCopy = async (job: Job) => {
+    try {
+      await navigator.clipboard.writeText(job.genCode);
+      setCopiedId(job.id);
+      setTimeout(() => setCopiedId((c) => (c === job.id ? null : c)), 1500);
+    } catch {
+      // Clipboard may be blocked; ignore silently.
+    }
+  };
 
   const selectClass =
     "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none";
@@ -168,8 +185,14 @@ function AppInner() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6">
+        {storageError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {t("storageFull")}
+          </div>
+        )}
+
         {/* Summary */}
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
           <SummaryCard label={t("totalJobs")} value={String(summary.totalJobs)} />
           <SummaryCard
             label={t("totalRevenue")}
@@ -177,9 +200,14 @@ function AppInner() {
             accent="text-emerald-600"
           />
           <SummaryCard
-            label={t("unpaidRevenue")}
-            value={formatCurrency(summary.unpaidRevenue, lang)}
-            accent="text-amber-600"
+            label={t("totalExpenses")}
+            value={formatCurrency(summary.totalExpenses, lang)}
+            accent="text-rose-600"
+          />
+          <SummaryCard
+            label={t("totalNet")}
+            value={formatCurrency(summary.totalNet, lang)}
+            accent="text-indigo-600"
           />
           <SummaryCard
             label={t("upcomingDrafts")}
@@ -284,7 +312,9 @@ function AppInner() {
                     <th className="px-4 py-3">{t("draftDue")}</th>
                     <th className="px-4 py-3">{t("publishDate")}</th>
                     <th className="px-4 py-3 text-right">{t("fee")}</th>
+                    <th className="px-4 py-3 text-right">{t("netIncome")}</th>
                     <th className="px-4 py-3">{t("status")}</th>
+                    <th className="px-4 py-3">{t("genCode")}</th>
                     <th className="px-4 py-3">{t("postUrl")}</th>
                     <th className="px-4 py-3 text-right">{t("actions")}</th>
                   </tr>
@@ -321,6 +351,9 @@ function AppInner() {
                       <td className="px-4 py-3 text-right font-medium text-slate-700">
                         {formatCurrency(job.fee, lang)}
                       </td>
+                      <td className="px-4 py-3 text-right font-semibold text-emerald-600">
+                        {formatCurrency(computeFinance(job).net, lang)}
+                      </td>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${
@@ -329,6 +362,28 @@ function AppInner() {
                         >
                           {t(`status_${job.status}` as const)}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {job.genCode ? (
+                          <div className="flex items-center gap-1.5">
+                            <code className="max-w-[120px] truncate rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">
+                              {job.genCode}
+                            </code>
+                            <button
+                              onClick={() => handleCopy(job)}
+                              className="rounded px-1.5 py-0.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+                            >
+                              {copiedId === job.id ? t("copied") : t("copy")}
+                            </button>
+                            {job.genDays > 0 && (
+                              <span className="shrink-0 text-[10px] text-slate-400">
+                                {job.genDays} {t("genDaysUnit")}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {job.postUrl ? (

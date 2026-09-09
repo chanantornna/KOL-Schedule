@@ -1,6 +1,7 @@
 import type { Job } from "./types";
 import type { Lang } from "./i18n";
 import { translations } from "./i18n";
+import { computeFinance } from "./utils";
 
 function escapeCsv(value: string | number): string {
   const s = String(value ?? "");
@@ -20,22 +21,37 @@ export function exportJobsToCsv(jobs: Job[], lang: Lang): void {
     t.draftDue,
     t.publishDate,
     t.fee,
+    t.genCode,
+    t.genDays,
+    t.whtAmount,
+    t.travelCost,
+    t.otherCost,
+    t.netIncome,
     t.status,
     t.postUrl,
     t.notes,
   ];
 
-  const rows = jobs.map((job) => [
-    job.client,
-    job.title,
-    t[`platform_${job.platform}` as const],
-    job.draftDue,
-    job.publishDate,
-    job.fee,
-    t[`status_${job.status}` as const],
-    job.postUrl,
-    job.notes,
-  ]);
+  const rows = jobs.map((job) => {
+    const f = computeFinance(job);
+    return [
+      job.client,
+      job.title,
+      t[`platform_${job.platform}` as const],
+      job.draftDue,
+      job.publishDate,
+      job.fee,
+      job.genCode,
+      job.genDays || "",
+      f.wht,
+      job.travelCost,
+      job.otherCost,
+      f.net,
+      t[`status_${job.status}` as const],
+      job.postUrl,
+      job.notes,
+    ];
+  });
 
   const lines = [headers, ...rows]
     .map((cols) => cols.map(escapeCsv).join(","))
