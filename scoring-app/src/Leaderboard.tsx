@@ -33,7 +33,7 @@ export default function Leaderboard({ state }: Props) {
           สรุปผล &amp; จัดอันดับ (Grand Total)
         </h2>
         <p className="mt-0.5 text-xs text-slate-500">
-          Grand Total = ค่าเฉลี่ยของ Total จากกรรมการทุกคน
+          Grand Total = ค่าเฉลี่ยของ Total จากกรรมการทุกคน แปลงเป็นคะแนนเต็ม 5
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -54,6 +54,9 @@ export default function Leaderboard({ state }: Props) {
               ))}
               <th className="w-28 border border-slate-200 px-2 py-2">
                 Grand Total
+                <div className="text-[11px] font-normal text-slate-400">
+                  (เต็ม 5)
+                </div>
               </th>
             </tr>
           </thead>

@@ -64,13 +64,19 @@ export function totalWeight(criteria: Criterion[]): number {
   return criteria.reduce((sum, c) => sum + (Number(c.weight) || 0), 0)
 }
 
+/** สเกลเต็มของ Grand Total (แสดงผลเป็นคะแนนเต็ม 5) */
+export const GRAND_TOTAL_MAX = 5
+
 /**
  * Grand Total ของผู้เข้าแข่งขัน 1 คน:
- * เฉลี่ยค่า Total จากกรรมการทุกคน (ถ้าไม่มีกรรมการเลย = 0)
+ * เฉลี่ยค่า Total (เต็ม 100) จากกรรมการทุกคน แล้วแปลงเป็นสเกลเต็ม 5
+ *   Grand Total = (ค่าเฉลี่ย Total / 100) × 5
+ * ถ้าไม่มีกรรมการเลย = 0
  */
 export function grandTotal(judgeTotals: number[]): number {
   if (judgeTotals.length === 0) return 0
-  return judgeTotals.reduce((a, b) => a + b, 0) / judgeTotals.length
+  const avg = judgeTotals.reduce((a, b) => a + b, 0) / judgeTotals.length
+  return (avg / 100) * GRAND_TOTAL_MAX
 }
 
 /**
