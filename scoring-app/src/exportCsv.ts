@@ -1,6 +1,5 @@
-import { CRITERIA, judgeTotal, round2 } from './scoring'
+import { judgeTotal, grandTotal, computeRanks, round2 } from './scoring'
 import type { AppState } from './types'
-import { grandTotal, computeRanks } from './scoring'
 
 /** ครอบค่าด้วยเครื่องหมายคำพูด + escape สำหรับ CSV */
 function csvCell(value: string | number): string {
@@ -9,16 +8,15 @@ function csvCell(value: string | number): string {
 }
 
 /**
- * สร้าง CSV สรุปผล: ต่อผู้เข้าแข่งขัน 1 แถว
+ * CSV สรุปผล: ต่อผู้เข้าแข่งขัน 1 แถว
  * คอลัมน์: No, Name, [Total ของกรรมการแต่ละคน], Grand Total, ลำดับ
  */
 export function buildSummaryCsv(state: AppState): string {
-  const { judges, contestants } = state
+  const { judges, contestants, criteria } = state
 
-  const grandTotals = contestants.map((c) => {
-    const totals = judges.map((j) => judgeTotal(c.scores[j.id]))
-    return grandTotal(totals)
-  })
+  const grandTotals = contestants.map((c) =>
+    grandTotal(judges.map((j) => judgeTotal(c.scores[j.id] ?? {}, criteria))),
+  )
   const ranks = computeRanks(grandTotals)
 
   const header = [
@@ -30,14 +28,10 @@ export function buildSummaryCsv(state: AppState): string {
   ]
 
   const rows = contestants.map((c, i) => {
-    const totals = judges.map((j) => round2(judgeTotal(c.scores[j.id])))
-    return [
-      c.no,
-      c.name,
-      ...totals,
-      round2(grandTotals[i]),
-      ranks[i],
-    ]
+    const totals = judges.map((j) =>
+      round2(judgeTotal(c.scores[j.id] ?? {}, criteria)),
+    )
+    return [i + 1, c.name, ...totals, round2(grandTotals[i]), ranks[i]]
   })
 
   const lines = [header, ...rows].map((r) => r.map(csvCell).join(','))
@@ -45,32 +39,32 @@ export function buildSummaryCsv(state: AppState): string {
 }
 
 /**
- * สร้าง CSV รายละเอียด: ต่อ (ผู้เข้าแข่งขัน x กรรมการ) 1 แถว พร้อมคะแนนดิบทุกหัวข้อ
+ * CSV รายละเอียด: ต่อ (ผู้เข้าแข่งขัน × กรรมการ) 1 แถว พร้อมคะแนนดิบทุกหัวข้อ
  */
 export function buildDetailCsv(state: AppState): string {
-  const { judges, contestants } = state
+  const { judges, contestants, criteria } = state
 
   const header = [
     'No.',
     'Name',
     'Judge',
-    ...CRITERIA.map((c) => c.label),
+    ...criteria.map((c) => `${c.label} (${c.weight}%)`),
     'Total',
   ]
 
   const rows: (string | number)[][] = []
-  for (const c of contestants) {
+  contestants.forEach((c, i) => {
     for (const j of judges) {
-      const s = c.scores[j.id]
+      const s = c.scores[j.id] ?? {}
       rows.push([
-        c.no,
+        i + 1,
         c.name,
         j.name,
-        ...CRITERIA.map((cr) => s[cr.key]),
-        round2(judgeTotal(s)),
+        ...criteria.map((cr) => s[cr.id] ?? 0),
+        round2(judgeTotal(s, criteria)),
       ])
     }
-  }
+  })
 
   const lines = [header, ...rows].map((r) => r.map(csvCell).join(','))
   return '\uFEFF' + lines.join('\r\n')

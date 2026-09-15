@@ -1,36 +1,177 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ScoreTable from './ScoreTable'
 import Leaderboard from './Leaderboard'
+import SettingsPanel from './SettingsPanel'
 import { clampScore } from './scoring'
-import type { CriterionKey } from './scoring'
-import { createDefaultState, loadState, saveState } from './store'
-import type { AppState } from './types'
+import type { Criterion } from './scoring'
 import {
-  buildDetailCsv,
-  buildSummaryCsv,
-  downloadCsv,
-} from './exportCsv'
+  createDefaultState,
+  loadState,
+  makeContestant,
+  saveState,
+  uid,
+} from './store'
+import type { AppState } from './types'
+import { buildDetailCsv, buildSummaryCsv, downloadCsv } from './exportCsv'
 import { buildBackupJson, downloadJson, parseBackupJson } from './backup'
 
 export default function App() {
   const [state, setState] = useState<AppState>(() => loadState())
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // persist ทุกครั้งที่ state เปลี่ยน
   useEffect(() => {
     saveState(state)
   }, [state])
 
+  // ----- ชื่องาน -----
+  const setTitle = (title: string) => setState((p) => ({ ...p, title }))
+
+  // ----- คะแนน / ชื่อผู้เข้าแข่งขัน -----
+  const updateName = (contestantId: string, name: string) =>
+    setState((p) => ({
+      ...p,
+      contestants: p.contestants.map((c) =>
+        c.id === contestantId ? { ...c, name } : c,
+      ),
+    }))
+
+  const updateScore = (
+    contestantId: string,
+    judgeId: string,
+    criterionId: string,
+    value: number,
+  ) => {
+    const crit = state.criteria.find((c) => c.id === criterionId)
+    const clamped = clampScore(value, crit?.max ?? 5)
+    setState((p) => ({
+      ...p,
+      contestants: p.contestants.map((c) =>
+        c.id === contestantId
+          ? {
+              ...c,
+              scores: {
+                ...c.scores,
+                [judgeId]: { ...c.scores[judgeId], [criterionId]: clamped },
+              },
+            }
+          : c,
+      ),
+    }))
+  }
+
+  // ----- กรรมการ -----
+  const updateJudgeName = (judgeId: string, name: string) =>
+    setState((p) => ({
+      ...p,
+      judges: p.judges.map((j) => (j.id === judgeId ? { ...j, name } : j)),
+    }))
+
+  const addJudge = () =>
+    setState((p) => {
+      const newJudge = { id: uid('judge'), name: `กรรมการ ${p.judges.length + 1}` }
+      const emptyRow = Object.fromEntries(p.criteria.map((c) => [c.id, 0]))
+      return {
+        ...p,
+        judges: [...p.judges, newJudge],
+        contestants: p.contestants.map((c) => ({
+          ...c,
+          scores: { ...c.scores, [newJudge.id]: { ...emptyRow } },
+        })),
+      }
+    })
+
+  const removeJudge = (judgeId: string) =>
+    setState((p) => {
+      if (p.judges.length <= 1) return p
+      return {
+        ...p,
+        judges: p.judges.filter((j) => j.id !== judgeId),
+        contestants: p.contestants.map((c) => {
+          const { [judgeId]: _removed, ...rest } = c.scores
+          return { ...c, scores: rest }
+        }),
+      }
+    })
+
+  // ----- ผู้เข้าแข่งขัน -----
+  const addContestant = () =>
+    setState((p) => ({
+      ...p,
+      contestants: [
+        ...p.contestants,
+        makeContestant('', p.judges, p.criteria),
+      ],
+    }))
+
+  const removeContestant = (contestantId: string) =>
+    setState((p) => {
+      if (p.contestants.length <= 1) return p
+      return {
+        ...p,
+        contestants: p.contestants.filter((c) => c.id !== contestantId),
+      }
+    })
+
+  // ----- เกณฑ์ (criteria) -----
+  const addCriterion = () =>
+    setState((p) => {
+      const newCrit: Criterion = {
+        id: uid('crit'),
+        label: `หัวข้อใหม่ ${p.criteria.length + 1}`,
+        weight: 0,
+        max: 5,
+      }
+      return {
+        ...p,
+        criteria: [...p.criteria, newCrit],
+        contestants: p.contestants.map((c) => ({
+          ...c,
+          scores: Object.fromEntries(
+            Object.entries(c.scores).map(([jid, row]) => [
+              jid,
+              { ...row, [newCrit.id]: 0 },
+            ]),
+          ),
+        })),
+      }
+    })
+
+  const removeCriterion = (criterionId: string) =>
+    setState((p) => {
+      if (p.criteria.length <= 1) return p
+      return {
+        ...p,
+        criteria: p.criteria.filter((c) => c.id !== criterionId),
+        contestants: p.contestants.map((c) => ({
+          ...c,
+          scores: Object.fromEntries(
+            Object.entries(c.scores).map(([jid, row]) => {
+              const { [criterionId]: _r, ...rest } = row
+              return [jid, rest]
+            }),
+          ),
+        })),
+      }
+    })
+
+  const changeCriterion = (criterionId: string, patch: Partial<Criterion>) =>
+    setState((p) => ({
+      ...p,
+      criteria: p.criteria.map((c) =>
+        c.id === criterionId ? { ...c, ...patch } : c,
+      ),
+    }))
+
+  // ----- import / reset -----
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    e.target.value = '' // reset เพื่อให้เลือกไฟล์เดิมซ้ำได้
+    e.target.value = ''
     if (!file) return
     try {
-      const text = await file.text()
-      const imported = parseBackupJson(text)
+      const imported = parseBackupJson(await file.text())
       if (
         window.confirm(
-          'นำเข้าไฟล์นี้จะเขียนทับคะแนนทั้งหมดที่มีอยู่ตอนนี้ ยืนยันหรือไม่?',
+          'นำเข้าไฟล์นี้จะเขียนทับข้อมูลทั้งหมดที่มีอยู่ตอนนี้ ยืนยันหรือไม่?',
         )
       ) {
         setState(imported)
@@ -43,70 +184,27 @@ export default function App() {
     }
   }
 
-  const updateName = (contestantNo: number, name: string) => {
-    setState((prev) => ({
-      ...prev,
-      contestants: prev.contestants.map((c) =>
-        c.no === contestantNo ? { ...c, name } : c,
-      ),
-    }))
-  }
-
-  const updateScore = (
-    contestantNo: number,
-    judgeId: string,
-    key: CriterionKey,
-    value: number,
-  ) => {
-    const clamped = clampScore(value)
-    setState((prev) => ({
-      ...prev,
-      contestants: prev.contestants.map((c) =>
-        c.no === contestantNo
-          ? {
-              ...c,
-              scores: {
-                ...c.scores,
-                [judgeId]: { ...c.scores[judgeId], [key]: clamped },
-              },
-            }
-          : c,
-      ),
-    }))
-  }
-
-  const updateJudgeName = (judgeId: string, name: string) => {
-    setState((prev) => ({
-      ...prev,
-      judges: prev.judges.map((j) => (j.id === judgeId ? { ...j, name } : j)),
-    }))
-  }
-
   const resetAll = () => {
-    if (
-      window.confirm(
-        'ล้างคะแนนและชื่อทั้งหมด กลับไปเริ่มต้นใหม่? การกระทำนี้ย้อนกลับไม่ได้',
-      )
-    ) {
+    if (window.confirm('ล้างข้อมูลทั้งหมด กลับไปค่าเริ่มต้น? ย้อนกลับไม่ได้')) {
       setState(createDefaultState())
     }
   }
 
-  const dateStr = useMemo(
-    () => new Date().toISOString().slice(0, 10),
-    [],
-  )
+  const dateStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-4">
-          <h1 className="text-xl font-bold text-slate-900">
-            PartyRock Scoring · SPU
-          </h1>
+          <input
+            value={state.title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full rounded border border-transparent text-xl font-bold text-slate-900 hover:border-slate-200 focus:border-indigo-500 focus:outline-none"
+            placeholder="ชื่องาน / การแข่งขัน"
+          />
           <p className="mt-1 text-sm text-slate-500">
-            รวมคะแนนตามเกณฑ์ในชีท · กรรมการ {state.judges.length} คน · ผู้เข้าแข่งขัน{' '}
-            {state.contestants.length} คน
+            กรรมการ {state.judges.length} คน · ผู้เข้าแข่งขัน{' '}
+            {state.contestants.length} คน · เกณฑ์ {state.criteria.length} หัวข้อ
           </p>
         </div>
       </header>
@@ -115,7 +213,7 @@ export default function App() {
         <div className="mb-6 flex flex-wrap gap-2">
           <button
             onClick={() =>
-              downloadCsv(`partyrock-summary-${dateStr}.csv`, buildSummaryCsv(state))
+              downloadCsv(`scores-summary-${dateStr}.csv`, buildSummaryCsv(state))
             }
             className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
           >
@@ -123,18 +221,15 @@ export default function App() {
           </button>
           <button
             onClick={() =>
-              downloadCsv(`partyrock-detail-${dateStr}.csv`, buildDetailCsv(state))
+              downloadCsv(`scores-detail-${dateStr}.csv`, buildDetailCsv(state))
             }
             className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
           >
-            ดาวน์โหลด CSV (รายละเอียดทุกหัวข้อ)
+            ดาวน์โหลด CSV (รายละเอียด)
           </button>
           <button
             onClick={() =>
-              downloadJson(
-                `partyrock-backup-${dateStr}.json`,
-                buildBackupJson(state),
-              )
+              downloadJson(`scores-backup-${dateStr}.json`, buildBackupJson(state))
             }
             className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
           >
@@ -162,27 +257,89 @@ export default function App() {
         </div>
 
         <div className="mb-6">
+          <SettingsPanel
+            criteria={state.criteria}
+            onAdd={addCriterion}
+            onRemove={removeCriterion}
+            onChange={changeCriterion}
+          />
+        </div>
+
+        <div className="mb-6">
           <Leaderboard state={state} />
         </div>
 
-        <div className="mb-3 text-sm font-semibold text-slate-600">
-          กรอกคะแนนแยกตามกรรมการ
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-sm font-semibold text-slate-600">
+            กรอกคะแนนแยกตามกรรมการ
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={addContestant}
+              className="rounded border border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+            >
+              + เพิ่มผู้เข้าแข่งขัน
+            </button>
+            <button
+              onClick={addJudge}
+              className="rounded border border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+            >
+              + เพิ่มกรรมการ
+            </button>
+          </div>
         </div>
+
         {state.judges.map((judge) => (
           <ScoreTable
             key={judge.id}
             judge={judge}
+            criteria={state.criteria}
             contestants={state.contestants}
             onNameChange={updateName}
             onScoreChange={updateScore}
             onJudgeNameChange={updateJudgeName}
+            onRemoveJudge={removeJudge}
+            canRemoveJudge={state.judges.length > 1}
           />
         ))}
+
+        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="mb-2 text-sm font-semibold text-slate-600">
+            จัดการรายชื่อผู้เข้าแข่งขัน
+          </h3>
+          <ul className="divide-y divide-slate-100">
+            {state.contestants.map((c, i) => (
+              <li key={c.id} className="flex items-center gap-3 py-1.5 text-sm">
+                <span className="w-8 text-slate-400">{i + 1}.</span>
+                <span className="flex-1">
+                  {c.name || (
+                    <span className="text-slate-300">— ยังไม่ระบุชื่อ —</span>
+                  )}
+                </span>
+                <button
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `ลบผู้เข้าแข่งขัน "${c.name || i + 1}" และคะแนนทั้งหมด?`,
+                      )
+                    )
+                      removeContestant(c.id)
+                  }}
+                  disabled={state.contestants.length <= 1}
+                  className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  ลบ
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       </main>
 
       <footer className="border-t border-slate-200 bg-white py-4">
         <div className="mx-auto max-w-6xl px-4 text-xs text-slate-400">
-          ข้อมูลถูกบันทึกไว้ในเบราว์เซอร์นี้โดยอัตโนมัติ (localStorage)
+          ข้อมูลถูกบันทึกไว้ในเบราว์เซอร์นี้โดยอัตโนมัติ (localStorage) ·
+          ใช้ปุ่มส่งออก/นำเข้าไฟล์เพื่อแชร์ให้กรรมการท่านอื่น
         </div>
       </footer>
     </div>

@@ -6,12 +6,12 @@ interface Props {
 }
 
 export default function Leaderboard({ state }: Props) {
-  const { judges, contestants } = state
+  const { judges, contestants, criteria } = state
 
   const rows = contestants.map((c) => {
-    const totals = judges.map((j) => judgeTotal(c.scores[j.id]))
+    const totals = judges.map((j) => judgeTotal(c.scores[j.id] ?? {}, criteria))
     return {
-      no: c.no,
+      id: c.id,
       name: c.name,
       judgeTotals: totals,
       grand: grandTotal(totals),
@@ -20,8 +20,8 @@ export default function Leaderboard({ state }: Props) {
 
   const ranks = computeRanks(rows.map((r) => r.grand))
   const ordered = rows
-    .map((r, i) => ({ ...r, rank: ranks[i] }))
-    .sort((a, b) => a.rank - b.rank || a.no - b.no)
+    .map((r, i) => ({ ...r, rank: ranks[i], origIndex: i }))
+    .sort((a, b) => a.rank - b.rank || a.origIndex - b.origIndex)
 
   const medal = (rank: number) =>
     rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : ''
@@ -30,10 +30,10 @@ export default function Leaderboard({ state }: Props) {
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
         <h2 className="text-base font-semibold text-slate-800">
-          สรุปผล & จัดอันดับ (Grand Total)
+          สรุปผล &amp; จัดอันดับ (Grand Total)
         </h2>
         <p className="mt-0.5 text-xs text-slate-500">
-          Grand Total = ค่าเฉลี่ยของ Total จากกรรมการทุกคน (เต็ม 100)
+          Grand Total = ค่าเฉลี่ยของ Total จากกรรมการทุกคน
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -41,7 +41,6 @@ export default function Leaderboard({ state }: Props) {
           <thead>
             <tr className="bg-slate-100 text-slate-600">
               <th className="w-16 border border-slate-200 px-2 py-2">ลำดับ</th>
-              <th className="w-12 border border-slate-200 px-2 py-2">No.</th>
               <th className="min-w-[160px] border border-slate-200 px-2 py-2 text-left">
                 Name
               </th>
@@ -60,13 +59,10 @@ export default function Leaderboard({ state }: Props) {
           </thead>
           <tbody>
             {ordered.map((r) => (
-              <tr key={r.no} className="hover:bg-slate-50">
+              <tr key={r.id} className="hover:bg-slate-50">
                 <td className="border border-slate-200 px-2 py-1 text-center font-semibold">
                   <span className="mr-1">{medal(r.rank)}</span>
                   {r.rank}
-                </td>
-                <td className="border border-slate-200 px-2 py-1 text-center text-slate-500">
-                  {r.no}
                 </td>
                 <td className="border border-slate-200 px-2 py-1">
                   {r.name || (

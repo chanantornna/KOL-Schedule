@@ -1,101 +1,80 @@
-// ===== โครงสร้างและสูตรการให้คะแนน PartyRock Scoring SPU =====
-// อ้างอิงตามชีทต้นฉบับ: 5 หัวข้อ แต่ละหัวข้อคะแนนเต็ม 5
-// น้ำหนัก (%) ตามหัวหน้าคอลัมน์ในชีท: 15 / 20 / 20 / 25 / 20
+// ===== โครงสร้างและสูตรการให้คะแนน (แบบยืดหยุ่น กำหนดเกณฑ์เองได้) =====
+// เกณฑ์ (criteria) แต่ละข้อมีชื่อ, น้ำหนัก (%) และคะแนนเต็มของข้อนั้น
+// Total ต่อกรรมการ = Σ ( คะแนนดิบ / คะแนนเต็มของข้อ × น้ำหนัก )
+// ถ้าน้ำหนักรวม = 100 ค่า Total จะเต็ม 100 พอดี
 
-/** คะแนนเต็มของแต่ละหัวข้อ (ตามชีท: "Full Scores 5") */
-export const MAX_SCORE_PER_CRITERION = 5
-
-/** เกณฑ์การให้คะแนน 5 หัวข้อ พร้อมน้ำหนักเป็นเปอร์เซ็นต์ (รวม = 100) */
 export interface Criterion {
-  key: CriterionKey
+  id: string
   label: string
   weight: number // %
+  max: number // คะแนนเต็มของหัวข้อนี้
 }
 
-export type CriterionKey =
-  | 'presentation'
-  | 'flowDesign'
-  | 'prompting'
-  | 'promptQuality'
-  | 'useCase'
+/** คะแนนดิบของผู้เข้าแข่งขัน 1 คน จากกรรมการ 1 คน: key = criterionId */
+export type CriterionScores = Record<string, number>
 
-export const CRITERIA: Criterion[] = [
-  {
-    key: 'presentation',
-    label: 'Presentation (นำเสนอ + การจัดการเวลา)',
-    weight: 15,
-  },
-  {
-    key: 'flowDesign',
-    label: 'Flow Design (การออกแบบ Flow)',
-    weight: 20,
-  },
-  {
-    key: 'prompting',
-    label: 'Prompting Techniques',
-    weight: 20,
-  },
-  {
-    key: 'promptQuality',
-    label: 'ความสมบูรณ์และการทำงานของ challenges (Prompt Quality)',
-    weight: 25,
-  },
-  {
-    key: 'useCase',
-    label: 'Use Case (ประยุกต์อย่างไร)',
-    weight: 20,
-  },
-]
-
-/** คะแนนดิบ 5 หัวข้อของผู้เข้าแข่งขัน 1 คน จากกรรมการ 1 คน */
-export type CriterionScores = Record<CriterionKey, number>
-
-export function emptyScores(): CriterionScores {
-  return {
-    presentation: 0,
-    flowDesign: 0,
-    prompting: 0,
-    promptQuality: 0,
-    useCase: 0,
-  }
+/** ค่าเกณฑ์เริ่มต้น (อ้างอิงชีท PartyRock เดิม เป็นเพียงค่าตั้งต้น แก้ได้) */
+export function defaultCriteria(): Criterion[] {
+  return [
+    { id: 'c1', label: 'Presentation (นำเสนอ + การจัดการเวลา)', weight: 15, max: 5 },
+    { id: 'c2', label: 'Flow Design (การออกแบบ Flow)', weight: 20, max: 5 },
+    { id: 'c3', label: 'Prompting Techniques', weight: 20, max: 5 },
+    {
+      id: 'c4',
+      label: 'ความสมบูรณ์และการทำงานของ challenges (Prompt Quality)',
+      weight: 25,
+      max: 5,
+    },
+    { id: 'c5', label: 'Use Case (ประยุกต์อย่างไร)', weight: 20, max: 5 },
+  ]
 }
 
-/**
- * Total ต่อกรรมการ (ตามสูตรชีท):
- * แต่ละหัวข้อคะแนนดิบเต็ม 5 คูณสัดส่วนน้ำหนัก แล้วรวมกัน
- *   Total = Σ ( (score / 5) * weight )
- * ค่าเต็ม = 100
- */
-export function judgeTotal(scores: CriterionScores): number {
-  return CRITERIA.reduce((sum, c) => {
-    const raw = clampScore(scores[c.key])
-    return sum + (raw / MAX_SCORE_PER_CRITERION) * c.weight
-  }, 0)
+/** สร้างชุดคะแนนว่าง (0 ทุกหัวข้อ) ตาม criteria ปัจจุบัน */
+export function emptyScores(criteria: Criterion[]): CriterionScores {
+  const s: CriterionScores = {}
+  for (const c of criteria) s[c.id] = 0
+  return s
 }
 
-/** จำกัดคะแนนดิบให้อยู่ในช่วง 0..5 */
-export function clampScore(value: number): number {
+/** จำกัดคะแนนดิบให้อยู่ในช่วง 0..max */
+export function clampScore(value: number, max: number): number {
   if (Number.isNaN(value)) return 0
   if (value < 0) return 0
-  if (value > MAX_SCORE_PER_CRITERION) return MAX_SCORE_PER_CRITERION
+  if (value > max) return max
   return value
 }
 
 /**
- * Grand Total ของผู้เข้าแข่งขัน 1 คน:
- * เฉลี่ยค่า Total จากกรรมการทุกคนที่ให้คะแนนคนนั้น (ค่าเต็ม 100)
- * ถ้าไม่มีกรรมการคนใดให้คะแนนเลย จะได้ 0
+ * Total ต่อกรรมการ:
+ *   Total = Σ ( (คะแนนดิบ / คะแนนเต็มของข้อ) × น้ำหนัก )
  */
-export function grandTotal(judgeTotals: number[]): number {
-  if (judgeTotals.length === 0) return 0
-  const sum = judgeTotals.reduce((a, b) => a + b, 0)
-  return sum / judgeTotals.length
+export function judgeTotal(
+  scores: CriterionScores,
+  criteria: Criterion[],
+): number {
+  return criteria.reduce((sum, c) => {
+    const raw = clampScore(scores[c.id] ?? 0, c.max)
+    const denom = c.max > 0 ? c.max : 1
+    return sum + (raw / denom) * c.weight
+  }, 0)
+}
+
+/** ผลรวมน้ำหนักของ criteria (ใช้เตือนผู้ใช้ถ้าไม่ครบ 100) */
+export function totalWeight(criteria: Criterion[]): number {
+  return criteria.reduce((sum, c) => sum + (Number(c.weight) || 0), 0)
 }
 
 /**
- * คำนวณลำดับ (rank) จาก grand total มากไปน้อย
- * คะแนนเท่ากันได้ลำดับเดียวกัน (competition ranking: 1,2,2,4)
- * รับ array ของ grand total ตามลำดับผู้เข้าแข่งขัน คืน array ของลำดับ (index ตรงกัน)
+ * Grand Total ของผู้เข้าแข่งขัน 1 คน:
+ * เฉลี่ยค่า Total จากกรรมการทุกคน (ถ้าไม่มีกรรมการเลย = 0)
+ */
+export function grandTotal(judgeTotals: number[]): number {
+  if (judgeTotals.length === 0) return 0
+  return judgeTotals.reduce((a, b) => a + b, 0) / judgeTotals.length
+}
+
+/**
+ * คำนวณลำดับจาก grand total มากไปน้อย (competition ranking: 1,2,2,4)
  */
 export function computeRanks(grandTotals: number[]): number[] {
   const indexed = grandTotals.map((value, index) => ({ value, index }))
@@ -105,7 +84,8 @@ export function computeRanks(grandTotals: number[]): number[] {
   let lastValue: number | null = null
   let lastRank = 0
   sorted.forEach((item, position) => {
-    const rank = lastValue !== null && item.value === lastValue ? lastRank : position + 1
+    const rank =
+      lastValue !== null && item.value === lastValue ? lastRank : position + 1
     rankByIndex[item.index] = rank
     lastValue = item.value
     lastRank = rank

@@ -1,8 +1,4 @@
-import type { CriterionScores } from './scoring'
-
-/** จำนวนกรรมการและผู้เข้าแข่งขัน ตามชีท (กรรมการ 4 ตาราง, ผู้เข้าแข่งขัน 10 คน/ตาราง) */
-export const NUM_JUDGES = 4
-export const NUM_CONTESTANTS = 10
+import type { Criterion, CriterionScores } from './scoring'
 
 export interface Judge {
   id: string
@@ -10,14 +6,17 @@ export interface Judge {
 }
 
 export interface Contestant {
-  /** เลขที่ (No.) 1..10 */
-  no: number
+  id: string
+  /** เลขที่ (No.) แสดงผลตามลำดับ */
   name: string
-  /** คะแนนจากกรรมการแต่ละคน: key = judgeId */
+  /** คะแนนจากกรรมการแต่ละคน: key = judgeId → (key = criterionId → คะแนน) */
   scores: Record<string, CriterionScores>
 }
 
 export interface AppState {
+  /** ชื่อของงาน/การแข่งขัน แสดงบนหัวเว็บ */
+  title: string
+  criteria: Criterion[]
   judges: Judge[]
   contestants: Contestant[]
 }
