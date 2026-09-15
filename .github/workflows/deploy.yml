@@ -28,16 +28,33 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - name: Install dependencies
+      # ----- Build main app (kol-schedule) at site root -----
+      - name: Install root dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build root app
         # Base path must match "/<repo-name>/" for project Pages sites.
         run: npm run build
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
+
+      # ----- Build scoring app into /scoring subpath -----
+      - name: Install scoring-app dependencies
+        working-directory: scoring-app
+        run: npm ci
+
+      - name: Build scoring app
+        working-directory: scoring-app
+        run: npm run build
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/scoring/
+
+      - name: Combine build output
+        # Copy scoring-app build into dist/scoring so both apps ship together.
+        run: |
+          mkdir -p dist/scoring
+          cp -r scoring-app/dist/* dist/scoring/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
