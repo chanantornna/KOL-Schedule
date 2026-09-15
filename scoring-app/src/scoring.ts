@@ -44,19 +44,25 @@ export function clampScore(value: number, max: number): number {
   return value
 }
 
+/** สเกลเต็มของ Total ต่อกรรมการ (แสดงผลเป็นคะแนนเต็ม 5) */
+export const JUDGE_TOTAL_MAX = 5
+
 /**
- * Total ต่อกรรมการ:
- *   Total = Σ ( (คะแนนดิบ / คะแนนเต็มของข้อ) × น้ำหนัก )
+ * Total ต่อกรรมการ (แสดงเป็นคะแนนเต็ม 5):
+ * ถ่วงน้ำหนักตาม % (รวม 100) ได้ค่าเต็ม 100 ก่อน แล้วแปลงเป็นสเกลเต็ม 5
+ *   weighted = Σ ( (คะแนนดิบ / คะแนนเต็มของข้อ) × น้ำหนัก )   // เต็ม 100
+ *   Total = (weighted / 100) × 5
  */
 export function judgeTotal(
   scores: CriterionScores,
   criteria: Criterion[],
 ): number {
-  return criteria.reduce((sum, c) => {
+  const weighted = criteria.reduce((sum, c) => {
     const raw = clampScore(scores[c.id] ?? 0, c.max)
     const denom = c.max > 0 ? c.max : 1
     return sum + (raw / denom) * c.weight
   }, 0)
+  return (weighted / 100) * JUDGE_TOTAL_MAX
 }
 
 /** ผลรวมน้ำหนักของ criteria (ใช้เตือนผู้ใช้ถ้าไม่ครบ 100) */
@@ -69,14 +75,12 @@ export const GRAND_TOTAL_MAX = 5
 
 /**
  * Grand Total ของผู้เข้าแข่งขัน 1 คน:
- * เฉลี่ยค่า Total (เต็ม 100) จากกรรมการทุกคน แล้วแปลงเป็นสเกลเต็ม 5
- *   Grand Total = (ค่าเฉลี่ย Total / 100) × 5
+ * เฉลี่ยค่า Total (ซึ่งเต็ม 5 อยู่แล้ว) จากกรรมการทุกคน → ผลลัพธ์เต็ม 5
  * ถ้าไม่มีกรรมการเลย = 0
  */
 export function grandTotal(judgeTotals: number[]): number {
   if (judgeTotals.length === 0) return 0
-  const avg = judgeTotals.reduce((a, b) => a + b, 0) / judgeTotals.length
-  return (avg / 100) * GRAND_TOTAL_MAX
+  return judgeTotals.reduce((a, b) => a + b, 0) / judgeTotals.length
 }
 
 /**

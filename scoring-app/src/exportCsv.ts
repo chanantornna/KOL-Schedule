@@ -22,7 +22,7 @@ export function buildSummaryCsv(state: AppState): string {
   const header = [
     'No.',
     'Name',
-    ...judges.map((j) => `${j.name} (Total /100)`),
+    ...judges.map((j) => `${j.name} (Total /5)`),
     'Grand Total (/5)',
     'ลำดับ',
   ]

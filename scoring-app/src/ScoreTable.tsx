@@ -72,7 +72,12 @@ export default function ScoreTable({
                   </div>
                 </th>
               ))}
-              <th className="w-24 border border-slate-200 px-2 py-2">Total</th>
+              <th className="w-24 border border-slate-200 px-2 py-2">
+                Total
+                <div className="text-[11px] font-normal text-slate-400">
+                  (เต็ม 5)
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody>
