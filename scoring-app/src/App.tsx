@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import ScoreTable from './ScoreTable'
 import Leaderboard from './Leaderboard'
 import SettingsPanel from './SettingsPanel'
+import RoomBar from './RoomBar'
 import { clampScore } from './scoring'
 import type { Criterion } from './scoring'
 import {
@@ -14,14 +15,40 @@ import {
 import type { AppState } from './types'
 import { buildDetailCsv, buildSummaryCsv, downloadCsv } from './exportCsv'
 import { buildBackupJson, downloadJson, parseBackupJson } from './backup'
+import { CLOUD_ENABLED } from './supabaseConfig'
+import { getRoomFromUrl, setRoomInUrl, useCloudSync } from './useCloudSync'
 
 export default function App() {
   const [state, setState] = useState<AppState>(() => loadState())
+  const [room, setRoom] = useState<string | null>(() => getRoomFromUrl())
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // บันทึกลง localStorage เสมอ (สำรอง + ใช้งาน offline ได้)
   useEffect(() => {
     saveState(state)
   }, [state])
+
+  // cloud sync: โหลด/subscribe/เขียน เมื่ออยู่ในห้อง
+  const { status: syncStatus } = useCloudSync({
+    room,
+    state,
+    onRemoteState: setState,
+  })
+
+  // เข้าห้อง: ตั้งรหัสห้องลง URL แล้ว hook จะโหลด/สร้างห้องให้
+  const joinRoom = (code: string) => {
+    const clean = code.trim()
+    if (!clean) return
+    setRoomInUrl(clean)
+    setRoom(clean)
+  }
+
+  const leaveRoom = () => {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('room')
+    window.history.replaceState({}, '', url.toString())
+    setRoom(null)
+  }
 
   // ----- ชื่องาน -----
   const setTitle = (title: string) => setState((p) => ({ ...p, title }))
@@ -206,6 +233,14 @@ export default function App() {
             กรรมการ {state.judges.length} คน · ผู้เข้าแข่งขัน{' '}
             {state.contestants.length} คน · เกณฑ์ {state.criteria.length} หัวข้อ
           </p>
+          {CLOUD_ENABLED && (
+            <RoomBar
+              room={room}
+              status={syncStatus}
+              onJoin={joinRoom}
+              onLeave={leaveRoom}
+            />
+          )}
         </div>
       </header>
 
