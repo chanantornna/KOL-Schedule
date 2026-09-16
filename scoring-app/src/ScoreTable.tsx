@@ -6,6 +6,7 @@ interface Props {
   judge: Judge
   criteria: Criterion[]
   contestants: Contestant[]
+  isAdmin: boolean
   onNameChange: (contestantId: string, name: string) => void
   onScoreChange: (
     contestantId: string,
@@ -22,6 +23,7 @@ export default function ScoreTable({
   judge,
   criteria,
   contestants,
+  isAdmin,
   onNameChange,
   onScoreChange,
   onJudgeNameChange,
@@ -35,20 +37,29 @@ export default function ScoreTable({
         <input
           value={judge.name}
           onChange={(e) => onJudgeNameChange(judge.id, e.target.value)}
-          className="rounded border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none"
+          readOnly={!isAdmin}
+          className={`rounded border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-800 focus:outline-none ${
+            isAdmin ? 'focus:border-indigo-500' : 'cursor-default bg-slate-50'
+          }`}
           placeholder="ชื่อกรรมการ"
         />
-        <button
-          onClick={() => {
-            if (window.confirm(`ลบกรรมการ "${judge.name}" และคะแนนทั้งหมดของท่านนี้?`))
-              onRemoveJudge(judge.id)
-          }}
-          disabled={!canRemoveJudge}
-          className="ml-auto rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-          title={canRemoveJudge ? 'ลบกรรมการคนนี้' : 'ต้องมีกรรมการอย่างน้อย 1 คน'}
-        >
-          ลบกรรมการ
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => {
+              if (
+                window.confirm(
+                  `ลบกรรมการ "${judge.name}" และคะแนนทั้งหมดของท่านนี้?`,
+                )
+              )
+                onRemoveJudge(judge.id)
+            }}
+            disabled={!canRemoveJudge}
+            className="ml-auto rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+            title={canRemoveJudge ? 'ลบกรรมการคนนี้' : 'ต้องมีกรรมการอย่างน้อย 1 คน'}
+          >
+            ลบกรรมการ
+          </button>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -93,8 +104,13 @@ export default function ScoreTable({
                     <input
                       value={c.name}
                       onChange={(e) => onNameChange(c.id, e.target.value)}
-                      className="w-full rounded border border-transparent px-1 py-1 hover:border-slate-200 focus:border-indigo-500 focus:outline-none"
-                      placeholder={`ผู้เข้าแข่งขัน ${idx + 1}`}
+                      readOnly={!isAdmin}
+                      className={`w-full rounded border border-transparent px-1 py-1 focus:outline-none ${
+                        isAdmin
+                          ? 'hover:border-slate-200 focus:border-indigo-500'
+                          : 'cursor-default'
+                      }`}
+                      placeholder={isAdmin ? `ผู้เข้าแข่งขัน ${idx + 1}` : ''}
                     />
                   </td>
                   {criteria.map((cr) => (

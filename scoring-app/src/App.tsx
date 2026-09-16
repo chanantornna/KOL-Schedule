@@ -18,11 +18,21 @@ import { downloadXlsx } from './exportXlsx'
 import { buildBackupJson, downloadJson, parseBackupJson } from './backup'
 import { CLOUD_ENABLED } from './supabaseConfig'
 import { getRoomFromUrl, setRoomInUrl, useCloudSync } from './useCloudSync'
+import { useAdmin } from './admin'
 
 export default function App() {
   const [state, setState] = useState<AppState>(() => loadState())
   const [room, setRoom] = useState<string | null>(() => getRoomFromUrl())
+  const { isAdmin, login: adminLogin, logout: adminLogout } = useAdmin()
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const promptAdminLogin = () => {
+    const pwd = window.prompt('ใส่รหัสแอดมินเพื่อปลดล็อกการแก้ชื่อและตั้งค่า:')
+    if (pwd === null) return
+    if (!adminLogin(pwd)) {
+      window.alert('รหัสไม่ถูกต้อง')
+    }
+  }
 
   // บันทึกลง localStorage เสมอ (สำรอง + ใช้งาน offline ได้)
   useEffect(() => {
@@ -51,17 +61,22 @@ export default function App() {
     setRoom(null)
   }
 
-  // ----- ชื่องาน -----
-  const setTitle = (title: string) => setState((p) => ({ ...p, title }))
+  // ----- ชื่องาน (แอดมินเท่านั้น) -----
+  const setTitle = (title: string) => {
+    if (!isAdmin) return
+    setState((p) => ({ ...p, title }))
+  }
 
-  // ----- คะแนน / ชื่อผู้เข้าแข่งขัน -----
-  const updateName = (contestantId: string, name: string) =>
+  // ----- ชื่อผู้เข้าแข่งขัน (แอดมินเท่านั้น) -----
+  const updateName = (contestantId: string, name: string) => {
+    if (!isAdmin) return
     setState((p) => ({
       ...p,
       contestants: p.contestants.map((c) =>
         c.id === contestantId ? { ...c, name } : c,
       ),
     }))
+  }
 
   const updateScore = (
     contestantId: string,
@@ -94,7 +109,8 @@ export default function App() {
       judges: p.judges.map((j) => (j.id === judgeId ? { ...j, name } : j)),
     }))
 
-  const addJudge = () =>
+  const addJudge = () => {
+    if (!isAdmin) return
     setState((p) => {
       const newJudge = { id: uid('judge'), name: `กรรมการ ${p.judges.length + 1}` }
       const emptyRow = Object.fromEntries(p.criteria.map((c) => [c.id, 0]))
@@ -107,8 +123,10 @@ export default function App() {
         })),
       }
     })
+  }
 
-  const removeJudge = (judgeId: string) =>
+  const removeJudge = (judgeId: string) => {
+    if (!isAdmin) return
     setState((p) => {
       if (p.judges.length <= 1) return p
       return {
@@ -120,9 +138,11 @@ export default function App() {
         }),
       }
     })
+  }
 
-  // ----- ผู้เข้าแข่งขัน -----
-  const addContestant = () =>
+  // ----- ผู้เข้าแข่งขัน (แอดมินเท่านั้น) -----
+  const addContestant = () => {
+    if (!isAdmin) return
     setState((p) => ({
       ...p,
       contestants: [
@@ -130,8 +150,10 @@ export default function App() {
         makeContestant('', p.judges, p.criteria),
       ],
     }))
+  }
 
-  const removeContestant = (contestantId: string) =>
+  const removeContestant = (contestantId: string) => {
+    if (!isAdmin) return
     setState((p) => {
       if (p.contestants.length <= 1) return p
       return {
@@ -139,9 +161,11 @@ export default function App() {
         contestants: p.contestants.filter((c) => c.id !== contestantId),
       }
     })
+  }
 
-  // ----- เกณฑ์ (criteria) -----
-  const addCriterion = () =>
+  // ----- เกณฑ์ (criteria) (แอดมินเท่านั้น) -----
+  const addCriterion = () => {
+    if (!isAdmin) return
     setState((p) => {
       const newCrit: Criterion = {
         id: uid('crit'),
@@ -163,8 +187,10 @@ export default function App() {
         })),
       }
     })
+  }
 
-  const removeCriterion = (criterionId: string) =>
+  const removeCriterion = (criterionId: string) => {
+    if (!isAdmin) return
     setState((p) => {
       if (p.criteria.length <= 1) return p
       return {
@@ -181,20 +207,23 @@ export default function App() {
         })),
       }
     })
+  }
 
-  const changeCriterion = (criterionId: string, patch: Partial<Criterion>) =>
+  const changeCriterion = (criterionId: string, patch: Partial<Criterion>) => {
+    if (!isAdmin) return
     setState((p) => ({
       ...p,
       criteria: p.criteria.map((c) =>
         c.id === criterionId ? { ...c, ...patch } : c,
       ),
     }))
+  }
 
   // ----- import / reset -----
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (!file) return
+    if (!file || !isAdmin) return
     try {
       const imported = parseBackupJson(await file.text())
       if (
@@ -213,6 +242,7 @@ export default function App() {
   }
 
   const resetAll = () => {
+    if (!isAdmin) return
     if (window.confirm('ล้างข้อมูลทั้งหมด กลับไปค่าเริ่มต้น? ย้อนกลับไม่ได้')) {
       setState(createDefaultState())
     }
@@ -224,15 +254,44 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 text-slate-800">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-4">
-          <input
-            value={state.title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded border border-transparent text-xl font-bold text-slate-900 hover:border-slate-200 focus:border-indigo-500 focus:outline-none"
-            placeholder="ชื่องาน / การแข่งขัน"
-          />
+          <div className="flex items-start justify-between gap-3">
+            <input
+              value={state.title}
+              onChange={(e) => setTitle(e.target.value)}
+              readOnly={!isAdmin}
+              className={`w-full rounded border border-transparent text-xl font-bold text-slate-900 focus:outline-none ${
+                isAdmin
+                  ? 'hover:border-slate-200 focus:border-indigo-500'
+                  : 'cursor-default'
+              }`}
+              placeholder="ชื่องาน / การแข่งขัน"
+            />
+            {isAdmin ? (
+              <button
+                onClick={adminLogout}
+                className="shrink-0 rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                title="ออกจากโหมดแอดมิน"
+              >
+                🔓 แอดมิน
+              </button>
+            ) : (
+              <button
+                onClick={promptAdminLogin}
+                className="shrink-0 rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100"
+                title="เข้าสู่โหมดแอดมินเพื่อแก้ชื่อและตั้งค่า"
+              >
+                🔒 โหมดแอดมิน
+              </button>
+            )}
+          </div>
           <p className="mt-1 text-sm text-slate-500">
             กรรมการ {state.judges.length} คน · ผู้เข้าแข่งขัน{' '}
             {state.contestants.length} คน · เกณฑ์ {state.criteria.length} หัวข้อ
+            {!isAdmin && (
+              <span className="ml-2 text-amber-600">
+                · โหมดกรรมการ (แก้ได้เฉพาะคะแนน)
+              </span>
+            )}
           </p>
           {CLOUD_ENABLED && (
             <RoomBar
@@ -281,35 +340,41 @@ export default function App() {
           >
             ส่งออกไฟล์ (สำหรับส่งต่อ)
           </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
-          >
-            นำเข้าไฟล์
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json,.json"
-            onChange={handleImportFile}
-            className="hidden"
-          />
-          <button
-            onClick={resetAll}
-            className="ml-auto rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-          >
-            ล้างข้อมูลทั้งหมด
-          </button>
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+              >
+                นำเข้าไฟล์
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json,.json"
+                onChange={handleImportFile}
+                className="hidden"
+              />
+              <button
+                onClick={resetAll}
+                className="ml-auto rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+              >
+                ล้างข้อมูลทั้งหมด
+              </button>
+            </>
+          )}
         </div>
 
-        <div className="mb-6">
-          <SettingsPanel
-            criteria={state.criteria}
-            onAdd={addCriterion}
-            onRemove={removeCriterion}
-            onChange={changeCriterion}
-          />
-        </div>
+        {isAdmin && (
+          <div className="mb-6">
+            <SettingsPanel
+              criteria={state.criteria}
+              onAdd={addCriterion}
+              onRemove={removeCriterion}
+              onChange={changeCriterion}
+            />
+          </div>
+        )}
 
         <div className="mb-6">
           <Leaderboard state={state} />
@@ -319,20 +384,22 @@ export default function App() {
           <span className="text-sm font-semibold text-slate-600">
             กรอกคะแนนแยกตามกรรมการ
           </span>
-          <div className="flex gap-2">
-            <button
-              onClick={addContestant}
-              className="rounded border border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
-            >
-              + เพิ่มผู้เข้าแข่งขัน
-            </button>
-            <button
-              onClick={addJudge}
-              className="rounded border border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
-            >
-              + เพิ่มกรรมการ
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="flex gap-2">
+              <button
+                onClick={addContestant}
+                className="rounded border border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+              >
+                + เพิ่มผู้เข้าแข่งขัน
+              </button>
+              <button
+                onClick={addJudge}
+                className="rounded border border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
+              >
+                + เพิ่มกรรมการ
+              </button>
+            </div>
+          )}
         </div>
 
         {state.judges.map((judge) => (
@@ -341,6 +408,7 @@ export default function App() {
             judge={judge}
             criteria={state.criteria}
             contestants={state.contestants}
+            isAdmin={isAdmin}
             onNameChange={updateName}
             onScoreChange={updateScore}
             onJudgeNameChange={updateJudgeName}
@@ -349,6 +417,7 @@ export default function App() {
           />
         ))}
 
+        {isAdmin && (
         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="mb-2 text-sm font-semibold text-slate-600">
             จัดการรายชื่อผู้เข้าแข่งขัน
@@ -380,6 +449,7 @@ export default function App() {
             ))}
           </ul>
         </section>
+        )}
       </main>
 
       <footer className="border-t border-slate-200 bg-white py-4">
