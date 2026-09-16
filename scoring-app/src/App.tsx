@@ -14,6 +14,7 @@ import {
 } from './store'
 import type { AppState } from './types'
 import { buildDetailCsv, buildSummaryCsv, downloadCsv } from './exportCsv'
+import { downloadXlsx } from './exportXlsx'
 import { buildBackupJson, downloadJson, parseBackupJson } from './backup'
 import { CLOUD_ENABLED } from './supabaseConfig'
 import { getRoomFromUrl, setRoomInUrl, useCloudSync } from './useCloudSync'
@@ -246,6 +247,16 @@ export default function App() {
 
       <main className="mx-auto max-w-6xl px-4 py-6">
         <div className="mb-6 flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              downloadXlsx(`scores-${dateStr}.xlsx`, state).catch(() =>
+                window.alert('สร้างไฟล์ Excel ไม่สำเร็จ ลองใหม่อีกครั้ง'),
+              )
+            }}
+            className="rounded bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
+          >
+            ดาวน์โหลด Excel (.xlsx)
+          </button>
           <button
             onClick={() =>
               downloadCsv(`scores-summary-${dateStr}.csv`, buildSummaryCsv(state))
