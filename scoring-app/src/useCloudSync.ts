@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppState } from './types'
 import { CLOUD_ENABLED } from './supabaseConfig'
-import { fetchRoom, saveRoom, subscribeRoom } from './cloud'
+import { fetchRoom, saveRoom, mergeAndSaveRoom, subscribeRoom } from './cloud'
 
 export type SyncStatus = 'local' | 'connecting' | 'synced' | 'saving' | 'error'
 
@@ -26,6 +26,14 @@ interface UseCloudSyncArgs {
   onRemoteState: (state: AppState) => void
 }
 
+/** true ถ้าผู้ใช้กำลังพิมพ์อยู่ในช่อง input/textarea (กันไม่ให้ remote มาทับตอนพิมพ์) */
+function isUserTyping(): boolean {
+  const el = document.activeElement
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
 /**
  * จัดการ sync กับ Supabase:
  * - โหลด state ของห้องตอนเข้า (ถ้ามี) หรือสร้างใหม่บน cloud
@@ -40,6 +48,9 @@ export function useCloudSync({ room, state, onRemoteState }: UseCloudSyncArgs) {
   const applyingRemote = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loaded = useRef(false)
+  // เก็บ remote state ที่มาถึงระหว่างผู้ใช้กำลังพิมพ์ ไว้ apply ทีหลัง (กันค่าเด้ง)
+  const pendingRemote = useRef<AppState | null>(null)
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // โหลด + subscribe เมื่อ room เปลี่ยน
   useEffect(() => {
@@ -66,18 +77,38 @@ export function useCloudSync({ room, state, onRemoteState }: UseCloudSyncArgs) {
       setStatus('synced')
     })()
 
-    const unsub = subscribeRoom(room, (remoteState) => {
+    // apply remote state จริง (ตั้ง flag กัน echo ไม่ให้เขียนกลับ cloud)
+    const applyRemote = (remoteState: AppState) => {
       applyingRemote.current = true
       onRemoteState(remoteState)
-      // ปล่อย flag ในรอบ event loop ถัดไป เพื่อให้ setState เสร็จก่อน
       setTimeout(() => {
         applyingRemote.current = false
       }, 0)
+    }
+
+    const unsub = subscribeRoom(room, (remoteState) => {
+      // ถ้าผู้ใช้กำลังพิมพ์อยู่ อย่าเพิ่งทับ — เก็บไว้ apply ตอนหยุดพิมพ์
+      if (isUserTyping()) {
+        pendingRemote.current = remoteState
+        return
+      }
+      applyRemote(remoteState)
     })
+
+    // คอยเช็คว่ามี remote ค้างอยู่และผู้ใช้หยุดพิมพ์แล้วหรือยัง
+    const flushInterval = setInterval(() => {
+      if (pendingRemote.current && !isUserTyping()) {
+        const pending = pendingRemote.current
+        pendingRemote.current = null
+        applyRemote(pending)
+      }
+    }, 400)
 
     return () => {
       cancelled = true
       unsub()
+      clearInterval(flushInterval)
+      if (retryTimer.current) clearTimeout(retryTimer.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room])
@@ -91,7 +122,8 @@ export function useCloudSync({ room, state, onRemoteState }: UseCloudSyncArgs) {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     setStatus('saving')
     saveTimer.current = setTimeout(async () => {
-      const ok = await saveRoom(room, state)
+      // ใช้ merge เพื่อไม่ให้ทับคะแนนที่คนอื่นเพิ่งกรอก
+      const ok = await mergeAndSaveRoom(room, state)
       setStatus(ok ? 'synced' : 'error')
     }, 600)
 

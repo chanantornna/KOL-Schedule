@@ -61,6 +61,59 @@ export async function saveRoom(room: string, state: AppState): Promise<boolean> 
 }
 
 /**
+ * merge + save: ดึง remote ล่าสุด merge คะแนนเข้าด้วยกัน แล้วค่อย save
+ * กันปัญหา: คนแก้คะแนนพร้อมกัน แล้วคนสุดท้ายทับของคนอื่นหาย
+ * - คะแนน (scores): merge ระดับ (contestant × judge × criterion) — ค่าที่ local แก้จะ override remote
+ * - ข้อมูลอื่น (title, judges, criteria, contestants list): ใช้ค่า local ตรงๆ
+ *   (เพราะการเปลี่ยน structure เป็นสิทธิ์แอดมินคนเดียว ไม่ต้องกังวล merge conflict)
+ */
+export async function mergeAndSaveRoom(
+  room: string,
+  localState: AppState,
+): Promise<boolean> {
+  const remote = await fetchRoom(room)
+  let merged = localState
+
+  if (remote) {
+    // merge คะแนน: สำหรับแต่ละ contestant → judge → criterion
+    // เอาคะแนนจาก remote มาเป็นฐาน แล้วทับด้วย local
+    const mergedContestants = localState.contestants.map((localC) => {
+      const remoteC = remote.contestants.find((rc) => rc.id === localC.id)
+      if (!remoteC) return localC // contestant ใหม่ที่ remote ไม่มี
+
+      const mergedScores: typeof localC.scores = {}
+      // รวม judgeId จากทั้ง remote และ local
+      const allJudgeIds = new Set([
+        ...Object.keys(remoteC.scores),
+        ...Object.keys(localC.scores),
+      ])
+      for (const jid of allJudgeIds) {
+        const remoteRow = remoteC.scores[jid] ?? {}
+        const localRow = localC.scores[jid] ?? {}
+        const allCritIds = new Set([
+          ...Object.keys(remoteRow),
+          ...Object.keys(localRow),
+        ])
+        const row: Record<string, number> = {}
+        for (const cid of allCritIds) {
+          const localVal = localRow[cid] ?? 0
+          const remoteVal = remoteRow[cid] ?? 0
+          // เลือกค่าต่อช่องอย่างฉลาด กันคะแนนคนอื่นหาย:
+          // - ถ้า local ยังเป็น 0 แต่ remote มีคะแนน → เชื่อ remote (คนอื่นเพิ่งกรอก)
+          // - อื่นๆ → เชื่อ local (ค่าที่เราเพิ่งแก้)
+          row[cid] = localVal === 0 && remoteVal !== 0 ? remoteVal : localVal
+        }
+        mergedScores[jid] = row
+      }
+      return { ...localC, scores: mergedScores }
+    })
+    merged = { ...localState, contestants: mergedContestants }
+  }
+
+  return saveRoom(room, merged)
+}
+
+/**
  * สมัครรับการเปลี่ยนแปลงของห้องแบบเรียลไทม์
  * callback จะถูกเรียกเมื่อมีคนอื่นแก้ state ของห้องนี้
  * คืนฟังก์ชันสำหรับยกเลิกการสมัคร
