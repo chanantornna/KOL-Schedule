@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AppState } from './types'
 import { CLOUD_ENABLED } from './supabaseConfig'
-import { fetchRoom, saveRoom, mergeAndSaveRoom, subscribeRoom } from './cloud'
+import {
+  fetchRoom,
+  saveRoom,
+  mergeAndSaveRoom,
+  subscribeRoom,
+  scoreCellKey,
+} from './cloud'
 
 export type SyncStatus = 'local' | 'connecting' | 'synced' | 'saving' | 'error'
 
@@ -51,6 +57,11 @@ export function useCloudSync({ room, state, onRemoteState }: UseCloudSyncArgs) {
   // เก็บ remote state ที่มาถึงระหว่างผู้ใช้กำลังพิมพ์ ไว้ apply ทีหลัง (กันค่าเด้ง)
   const pendingRemote = useRef<AppState | null>(null)
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // ช่องคะแนนที่เครื่องนี้เพิ่งแก้ (ยังไม่ save) — ใช้กันไม่ให้ remote มาทับ + merge ถูกช่อง
+  const dirtyCells = useRef<Set<string>>(new Set())
+  // อ้างอิง state ล่าสุด เพื่อให้ applyRemote เข้าถึงได้โดยไม่ต้อง re-subscribe
+  const stateRef = useRef(state)
+  stateRef.current = state
 
   // โหลด + subscribe เมื่อ room เปลี่ยน
   useEffect(() => {
@@ -78,9 +89,34 @@ export function useCloudSync({ room, state, onRemoteState }: UseCloudSyncArgs) {
     })()
 
     // apply remote state จริง (ตั้ง flag กัน echo ไม่ให้เขียนกลับ cloud)
+    // คงค่าช่องที่เรากำลังแก้อยู่ (dirty) ไว้ ไม่ให้ remote มาทับ → กันอาการเด้ง
     const applyRemote = (remoteState: AppState) => {
       applyingRemote.current = true
-      onRemoteState(remoteState)
+      let next = remoteState
+      if (dirtyCells.current.size > 0) {
+        const local = stateRef.current
+        next = {
+          ...remoteState,
+          contestants: remoteState.contestants.map((rc) => {
+            const lc = local.contestants.find((c) => c.id === rc.id)
+            if (!lc) return rc
+            const scores: typeof rc.scores = {}
+            for (const jid of Object.keys(rc.scores)) {
+              const rRow = rc.scores[jid] ?? {}
+              const lRow = lc.scores[jid] ?? {}
+              const row: Record<string, number> = { ...rRow }
+              for (const cid of Object.keys(row)) {
+                if (dirtyCells.current.has(scoreCellKey(rc.id, jid, cid))) {
+                  row[cid] = lRow[cid] ?? row[cid] // คงค่าที่เราแก้ไว้
+                }
+              }
+              scores[jid] = row
+            }
+            return { ...rc, scores }
+          }),
+        }
+      }
+      onRemoteState(next)
       setTimeout(() => {
         applyingRemote.current = false
       }, 0)
@@ -122,8 +158,11 @@ export function useCloudSync({ room, state, onRemoteState }: UseCloudSyncArgs) {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     setStatus('saving')
     saveTimer.current = setTimeout(async () => {
-      // ใช้ merge เพื่อไม่ให้ทับคะแนนที่คนอื่นเพิ่งกรอก
-      const ok = await mergeAndSaveRoom(room, state)
+      // snapshot ช่องที่แก้ไว้ แล้วเคลียร์ (ช่องพวกนี้กำลังจะถูกบันทึก)
+      const cells = new Set(dirtyCells.current)
+      dirtyCells.current.clear()
+      // merge: ทับเฉพาะช่องที่เราแก้เอง คงค่าคนอื่นไว้
+      const ok = await mergeAndSaveRoom(room, state, cells)
       setStatus(ok ? 'synced' : 'error')
     }, 600)
 
@@ -133,5 +172,10 @@ export function useCloudSync({ room, state, onRemoteState }: UseCloudSyncArgs) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, room])
 
-  return { status }
+  /** เรียกเมื่อผู้ใช้แก้คะแนนช่องหนึ่ง เพื่อจำว่าช่องนี้เราแก้เอง */
+  const markDirty = (key: string) => {
+    dirtyCells.current.add(key)
+  }
+
+  return { status, markDirty }
 }

@@ -40,7 +40,7 @@ export default function App() {
   }, [state])
 
   // cloud sync: โหลด/subscribe/เขียน เมื่ออยู่ในห้อง
-  const { status: syncStatus } = useCloudSync({
+  const { status: syncStatus, markDirty } = useCloudSync({
     room,
     state,
     onRemoteState: setState,
@@ -86,6 +86,8 @@ export default function App() {
   ) => {
     const crit = state.criteria.find((c) => c.id === criterionId)
     const clamped = clampScore(value, crit?.max ?? 5)
+    // จำว่าช่องนี้เราแก้เอง เพื่อกัน remote มาทับ (แก้อาการคะแนนเด้ง)
+    markDirty(`${contestantId}|${judgeId}|${criterionId}`)
     setState((p) => ({
       ...p,
       contestants: p.contestants.map((c) =>

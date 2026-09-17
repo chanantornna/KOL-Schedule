@@ -67,22 +67,32 @@ export async function saveRoom(room: string, state: AppState): Promise<boolean> 
  * - ข้อมูลอื่น (title, judges, criteria, contestants list): ใช้ค่า local ตรงๆ
  *   (เพราะการเปลี่ยน structure เป็นสิทธิ์แอดมินคนเดียว ไม่ต้องกังวล merge conflict)
  */
+/** คีย์ระบุช่องคะแนน 1 ช่อง: "contestantId|judgeId|criterionId" */
+export function scoreCellKey(
+  contestantId: string,
+  judgeId: string,
+  criterionId: string,
+): string {
+  return `${contestantId}|${judgeId}|${criterionId}`
+}
+
 export async function mergeAndSaveRoom(
   room: string,
   localState: AppState,
+  dirtyCells: Set<string>,
 ): Promise<boolean> {
   const remote = await fetchRoom(room)
   let merged = localState
 
   if (remote) {
-    // merge คะแนน: สำหรับแต่ละ contestant → judge → criterion
-    // เอาคะแนนจาก remote มาเป็นฐาน แล้วทับด้วย local
+    // เริ่มจาก remote เป็นฐาน (มีคะแนนล่าสุดของทุกคน)
+    // แล้วทับเฉพาะช่องที่ "เครื่องนี้แก้เอง" (อยู่ใน dirtyCells) ด้วยค่า local
+    // ช่องที่เราไม่ได้แตะ → คงค่า remote ไว้ (ไม่ทับของคนอื่น, ไม่เด้ง)
     const mergedContestants = localState.contestants.map((localC) => {
       const remoteC = remote.contestants.find((rc) => rc.id === localC.id)
-      if (!remoteC) return localC // contestant ใหม่ที่ remote ไม่มี
+      if (!remoteC) return localC // contestant ใหม่ที่ remote ยังไม่มี
 
       const mergedScores: typeof localC.scores = {}
-      // รวม judgeId จากทั้ง remote และ local
       const allJudgeIds = new Set([
         ...Object.keys(remoteC.scores),
         ...Object.keys(localC.scores),
@@ -96,12 +106,14 @@ export async function mergeAndSaveRoom(
         ])
         const row: Record<string, number> = {}
         for (const cid of allCritIds) {
-          const localVal = localRow[cid] ?? 0
-          const remoteVal = remoteRow[cid] ?? 0
-          // เลือกค่าต่อช่องอย่างฉลาด กันคะแนนคนอื่นหาย:
-          // - ถ้า local ยังเป็น 0 แต่ remote มีคะแนน → เชื่อ remote (คนอื่นเพิ่งกรอก)
-          // - อื่นๆ → เชื่อ local (ค่าที่เราเพิ่งแก้)
-          row[cid] = localVal === 0 && remoteVal !== 0 ? remoteVal : localVal
+          const key = scoreCellKey(localC.id, jid, cid)
+          if (dirtyCells.has(key)) {
+            // ช่องนี้เราแก้เอง → ใช้ค่า local
+            row[cid] = localRow[cid] ?? 0
+          } else {
+            // ช่องนี้เราไม่ได้แตะ → ใช้ค่า remote (ถ้ามี) ไม่งั้น local
+            row[cid] = remoteRow[cid] ?? localRow[cid] ?? 0
+          }
         }
         mergedScores[jid] = row
       }
