@@ -112,6 +112,16 @@ export default function ScoreTable({
                       }`}
                       placeholder={isAdmin ? `ผู้เข้าแข่งขัน ${idx + 1}` : ''}
                     />
+                    {c.workLink && (
+                      <a
+                        href={c.workLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-0.5 inline-flex items-center gap-1 px-1 text-xs text-indigo-600 hover:underline"
+                      >
+                        🔗 ดูผลงาน
+                      </a>
+                    )}
                   </td>
                   {criteria.map((cr) => (
                     <td

@@ -30,6 +30,7 @@ export async function downloadXlsx(
     ...judges.map((j) => ({ header: `${j.name} (Total /5)`, width: 16 })),
     { header: 'Grand Total (/5)', width: 16 },
     { header: 'ลำดับ', width: 8 },
+    { header: 'ลิงก์ผลงาน', width: 40 },
   ]
   contestants.forEach((c, i) => {
     summary.addRow([
@@ -38,6 +39,7 @@ export async function downloadXlsx(
       ...judges.map((j) => round2(judgeTotal(c.scores[j.id] ?? {}, criteria))),
       round2(grandTotals[i]),
       ranks[i],
+      c.workLink ?? '',
     ])
   })
   summary.getRow(1).font = { bold: true }

@@ -34,6 +34,7 @@ export function makeContestant(
   return {
     id: uid('c'),
     name,
+    workLink: '',
     scores: Object.fromEntries(
       judges.map((j) => [j.id, emptyScores(criteria)]),
     ),
@@ -78,6 +79,7 @@ export function normalizeState(input: Partial<AppState>): AppState {
       ? input.contestants.map((c) => ({
           id: c.id || uid('c'),
           name: c.name ?? '',
+          workLink: c.workLink ?? '',
           scores: buildScores(c.scores ?? {}, judges, criteria),
         }))
       : base.contestants

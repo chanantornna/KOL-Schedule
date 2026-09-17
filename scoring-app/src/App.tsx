@@ -78,6 +78,17 @@ export default function App() {
     }))
   }
 
+  // ----- ลิงก์ผลงาน (แอดมินเท่านั้น) -----
+  const updateWorkLink = (contestantId: string, workLink: string) => {
+    if (!isAdmin) return
+    setState((p) => ({
+      ...p,
+      contestants: p.contestants.map((c) =>
+        c.id === contestantId ? { ...c, workLink } : c,
+      ),
+    }))
+  }
+
   const updateScore = (
     contestantId: string,
     judgeId: string,
@@ -424,15 +435,38 @@ export default function App() {
           <h3 className="mb-2 text-sm font-semibold text-slate-600">
             จัดการรายชื่อผู้เข้าแข่งขัน
           </h3>
+          <p className="mb-2 text-xs text-slate-400">
+            ใส่ชื่อและลิงก์ผลงานของผู้เข้าแข่งขันแต่ละคน (กรรมการจะคลิกดูผลงานได้)
+          </p>
           <ul className="divide-y divide-slate-100">
             {state.contestants.map((c, i) => (
-              <li key={c.id} className="flex items-center gap-3 py-1.5 text-sm">
-                <span className="w-8 text-slate-400">{i + 1}.</span>
-                <span className="flex-1">
-                  {c.name || (
-                    <span className="text-slate-300">— ยังไม่ระบุชื่อ —</span>
-                  )}
-                </span>
+              <li
+                key={c.id}
+                className="flex flex-wrap items-center gap-2 py-2 text-sm"
+              >
+                <span className="w-6 text-slate-400">{i + 1}.</span>
+                <input
+                  value={c.name}
+                  onChange={(e) => updateName(c.id, e.target.value)}
+                  placeholder={`ชื่อผู้เข้าแข่งขัน ${i + 1}`}
+                  className="min-w-[140px] flex-1 rounded border border-slate-300 px-2 py-1 focus:border-indigo-500 focus:outline-none"
+                />
+                <input
+                  value={c.workLink ?? ''}
+                  onChange={(e) => updateWorkLink(c.id, e.target.value)}
+                  placeholder="ลิงก์ผลงาน เช่น https://..."
+                  className="min-w-[200px] flex-1 rounded border border-slate-300 px-2 py-1 focus:border-indigo-500 focus:outline-none"
+                />
+                {c.workLink && (
+                  <a
+                    href={c.workLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded border border-indigo-200 px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50"
+                  >
+                    เปิด 🔗
+                  </a>
+                )}
                 <button
                   onClick={() => {
                     if (

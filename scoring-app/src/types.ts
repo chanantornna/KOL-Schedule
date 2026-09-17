@@ -9,6 +9,8 @@ export interface Contestant {
   id: string
   /** เลขที่ (No.) แสดงผลตามลำดับ */
   name: string
+  /** ลิงก์ผลงาน (เช่น URL งานนำเสนอ/ชิ้นงาน) — แอดมินใส่ กรรมการคลิกดูได้ */
+  workLink?: string
   /** คะแนนจากกรรมการแต่ละคน: key = judgeId → (key = criterionId → คะแนน) */
   scores: Record<string, CriterionScores>
 }

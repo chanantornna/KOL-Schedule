@@ -25,13 +25,21 @@ export function buildSummaryCsv(state: AppState): string {
     ...judges.map((j) => `${j.name} (Total /5)`),
     'Grand Total (/5)',
     'ลำดับ',
+    'ลิงก์ผลงาน',
   ]
 
   const rows = contestants.map((c, i) => {
     const totals = judges.map((j) =>
       round2(judgeTotal(c.scores[j.id] ?? {}, criteria)),
     )
-    return [i + 1, c.name, ...totals, round2(grandTotals[i]), ranks[i]]
+    return [
+      i + 1,
+      c.name,
+      ...totals,
+      round2(grandTotals[i]),
+      ranks[i],
+      c.workLink ?? '',
+    ]
   })
 
   const lines = [header, ...rows].map((r) => r.map(csvCell).join(','))
